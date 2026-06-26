@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CCTV Monitor</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;padding:14px}
+h1{font-size:18px;font-weight:600}
+.sub{color:#94a3b8;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.blink{width:7px;height:7px;border-radius:50%;background:#22c55e;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.hero{background:#1e293b;border-radius:16px;padding:18px;margin-bottom:16px;text-align:center}
+.pct{font-size:52px;font-weight:700;line-height:1}
+.pctlbl{color:#94a3b8;font-size:13px;margin-top:4px}
+.hbar{height:10px;background:#334155;border-radius:6px;margin-top:12px;overflow:hidden}
+.hbar i{display:block;height:100%;transition:width .6s}
+.spark{display:flex;align-items:flex-end;gap:3px;height:44px;margin-top:14px;justify-content:center}
+.spark i{width:8px;border-radius:3px;display:block;min-height:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px}
+.card{background:#1e293b;border-radius:14px;padding:14px}
+.crow{display:flex;align-items:center;gap:7px;font-size:14px}
+.cdot{width:10px;height:10px;border-radius:50%;flex:none}
+.badge{margin-left:auto;font-size:10px;color:#94a3b8;background:#334155;padding:2px 7px;border-radius:8px;white-space:nowrap}
+.big{font-size:30px;font-weight:700;margin:6px 0 2px}
+.big span{font-size:15px;color:#64748b;font-weight:400}
+.bar{height:6px;background:#334155;border-radius:4px;overflow:hidden;margin-bottom:6px}
+.bar i{display:block;height:100%}
+.dots{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0 4px}
+.dc{border-radius:50%;flex:none}
+.dc.on{background:#16a34a}
+.dc.off{background:#dc2626}
+.meta{font-size:11px;color:#64748b;margin-top:6px}
+.foot{text-align:center;color:#475569;font-size:11px;margin-top:18px}
+.err{color:#f87171;font-size:12px;margin-top:8px;text-align:center}
+</style>
+</head>
+<body>
+<h1>ระบบเฝ้าระวังกล้องวงจรปิด</h1>
+<div class="sub"><span class="blink" id="blink"></span><span id="ts">กำลังโหลด...</span></div>
+<div id="app"></div>
+<div class="foot" id="foot"></div>
+
+<script>
+const G='#16a34a',Y='#f59e0b',R='#dc2626';
+const col=p=>p>=95?G:p>=80?Y:R;
+
+function dotsHtml(cs,total){
+  if(!cs||!cs.length)return '';
+  const sz=total<=8?10:total<=14?8:6;
+  return '<div class="dots">'+cs.map((a,i)=>
+    `<span class="dc ${a?'on':'off'}" style="width:${sz}px;height:${sz}px" title="CH${i+1}"></span>`
+  ).join('')+'</div>';
+}
+
+function render(d){
+  const c=col(d.pct||0);
+  const hist=Array.isArray(d.history)&&d.history.length?d.history:[d.pct||0];
+  const spark=hist.map(v=>`<i style="height:${Math.max(4,Math.round((v||0)*.42))}px;background:${col(v||0)}"></i>`).join('');
+
+  const hero=`<div class="hero">
+    <div class="pct" style="color:${c}">${d.pct||0}%</div>
+    <div class="pctlbl">ความพร้อมใช้งาน &middot; ${d.online||0}/${d.total||0} กล้องออนไลน์</div>
+    <div class="hbar"><i style="width:${d.pct||0}%;background:${c}"></i></div>
+    <div class="spark">${spark}</div>
+  </div>`;
+
+  const cards=(d.devices||[]).map(dv=>{
+    const dc=dv.up?G:R;
+    const cp=dv.total?Math.round(dv.online*100/dv.total):0;
+    const cc=!dv.up?R:dv.online>=dv.total?G:dv.online>0?Y:R;
+    return `<div class="card">
+      <div class="crow"><span class="cdot" style="background:${dc}"></span><b>${dv.name}</b><span class="badge">${dv.brand||''} ${dv.type||''}</span></div>
+      <div class="big" style="color:${cc}">${dv.online}<span>/${dv.total}</span></div>
+      <div class="bar"><i style="width:${cp}%;background:${cc}"></i></div>
+      ${dotsHtml(dv.camStatus,dv.total)}
+      <div class="meta">${dv.up?'ออนไลน์':'ออฟไลน์'}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('ts').textContent='อัปเดตล่าสุด '+(d.time||'-')+' · รีเฟรชทุก 60 วิ';
+  document.getElementById('app').innerHTML=hero+'<div class="grid">'+cards+'</div>';
+  document.getElementById('foot').textContent='CCTV Monitor · เครือข่าย 192.168.100.0/23 · '+(d.note?'เครื่องล่ม: '+d.note:'ทุกเครื่องปกติ');
+  document.getElementById('blink').style.background=c;
+}
+
+async function load(){
+  try{
+    const r=await fetch('data.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    render(await r.json());
+  }catch(e){
+    document.getElementById('ts').textContent='โหลดไม่สำเร็จ — '+e.message;
+  }
+}
+load();
+setInterval(load,60000);
+</script>
+</body>
+</html>
